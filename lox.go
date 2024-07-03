@@ -42,10 +42,10 @@ func runPrompt() {
 }
 
 func run(source string) {
-	scanner := Scanner{source}
+	scanner := MakeScanner(source)
 	var tokens []Token = scanner.ScanTokens()
 
 	for _, token := range tokens {
-		println(token)
+		println(token.ToString())
 	}
 }

@@ -1,11 +1,33 @@
 package main
 
+import "strconv"
+
+var keywords = map[string]TokenType{
+	"and":    AND,
+	"class":  CLASS,
+	"else":   ELSE,
+	"false":  FALSE,
+	"for":    FOR,
+	"fun":    FUN,
+	"if":     IF,
+	"nil":    NIL,
+	"or":     OR,
+	"print":  PRINT,
+	"return": RETURN,
+	"super":  SUPER,
+	"this":   THIS,
+	"true":   TRUE,
+	"var":    VAR,
+	"while":  WHILE,
+}
+
 type Scanner struct {
-	source  string
-	tokens  []Token
-	start   uint32
-	current uint32
-	line    uint32
+	source     string
+	tokens     []Token
+	start      uint32
+	current    uint32
+	line       uint32
+	ml_comment uint16
 }
 
 func MakeScanner(source string) Scanner {
@@ -93,6 +115,8 @@ func (scanner *Scanner) ScanToken() {
 			for scanner.Peek() != '\n' && !scanner.IsAtEnd() {
 				scanner.Advance()
 			}
+		} else if scanner.Match('*') {
+			scanner.ReadMultilineComment()
 		} else {
 			scanner.AddToken(SLASH)
 		}
@@ -105,15 +129,77 @@ func (scanner *Scanner) ScanToken() {
 		scanner.line++
 		break
 	case '"':
-		scanner.String()
+		scanner.ReadString()
 		break
 	default:
-		error(scanner.line, "Unexpected character.")
+		if IsDigit(c) {
+			scanner.ReadNumber()
+		} else if IsAlpha(c) {
+			scanner.ReadIdentifier()
+		} else {
+			error(scanner.line, "Unexpected character.")
+		}
 		break
 	}
 }
 
-func (scanner *Scanner) String() {
+func IsDigit(letter byte) bool {
+	return letter >= '0' && letter <= '9'
+}
+
+func IsAlpha(letter byte) bool {
+	lower := letter >= 'a' && letter <= 'z'
+	upper := letter >= 'A' && letter <= 'Z'
+	underscore := letter == '_'
+	return lower || upper || underscore
+}
+
+func (scanner *Scanner) ReadMultilineComment() {
+	scanner.ml_comment++
+	for scanner.ml_comment > 0 {
+		if scanner.IsAtEnd() {
+			return
+		} else if scanner.Peek() == '/' && scanner.PeekNext() == '*' {
+			scanner.ml_comment++
+			scanner.Advance()
+		} else if scanner.Peek() == '*' && scanner.PeekNext() == '/' {
+			scanner.ml_comment--
+			scanner.Advance()
+		}
+		scanner.Advance()
+	}
+}
+
+func (scanner *Scanner) ReadIdentifier() {
+	for IsAlpha(scanner.Peek()) {
+		scanner.Advance()
+	}
+
+	text := scanner.source[scanner.start:scanner.current]
+	ttype, is_keyword := keywords[text]
+	if !is_keyword {
+		ttype = IDENTIFIER
+	}
+	scanner.AddToken(ttype)
+}
+
+func (scanner *Scanner) ReadNumber() {
+	for IsDigit(scanner.Peek()) {
+		scanner.Advance()
+	}
+
+	if scanner.Peek() == '.' && IsDigit(scanner.PeekNext()) {
+		scanner.Advance()
+		for IsDigit(scanner.Peek()) {
+			scanner.Advance()
+		}
+	}
+
+	as_float, _ := strconv.ParseFloat(scanner.source[scanner.start:scanner.current], 64)
+	scanner.AddTokenByLiteral(NUMBER, as_float)
+}
+
+func (scanner *Scanner) ReadString() {
 	for scanner.Peek() != '"' && !scanner.IsAtEnd() {
 		if scanner.Peek() == '\n' {
 			scanner.line++
@@ -128,11 +214,18 @@ func (scanner *Scanner) String() {
 
 	scanner.Advance()
 
-	value := scanner.source[scanner.start+1 : scanner.current-1]
-	scanner.AddTokenByLiteral(STRING, value)
+	as_string := scanner.source[scanner.start+1 : scanner.current-1]
+	scanner.AddTokenByLiteral(STRING, as_string)
 }
 
 // Return current character if not at EOF
+func (scanner *Scanner) PeekNext() byte {
+	if scanner.current+1 >= uint32(len(scanner.source)) {
+		return 0
+	}
+	return scanner.source[scanner.current+1]
+}
+
 func (scanner *Scanner) Peek() byte {
 	if scanner.IsAtEnd() {
 		return 0
@@ -161,11 +254,12 @@ func (scanner *Scanner) Advance() byte {
 
 // For adding a token with a type that does not need a literal
 func (scanner *Scanner) AddToken(ttype TokenType) {
-	scanner.AddTokenByLiteral(ttype, "")
+	scanner.AddTokenByLiteral(ttype, nil)
+	// TODO: get rid of interface{} as our literal type. can we just store as lexeme and `eval()` it?
 }
 
 // Adds a Token using ttype and literal
-func (scanner *Scanner) AddTokenByLiteral(ttype TokenType, literal string) {
+func (scanner *Scanner) AddTokenByLiteral(ttype TokenType, literal interface{}) {
 	var text string = scanner.source[scanner.start:scanner.current]
 	scanner.tokens = append(scanner.tokens, Token{ttype, text, literal, scanner.line})
 }

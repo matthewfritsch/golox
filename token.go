@@ -25,17 +25,3 @@ func (token *Token) ToString() string {
 	}
 	return fmt.Sprintf("%v %s %s", token.ttype, string(token.lexeme), literal_msg)
 }
-
-// func (token *Token) ToLiteral() interface{} {
-// 	if token.ttype == NUMBER {
-// 		num, err := strconv.ParseInt(token.lexeme, 10, 64)
-// 		if err == nil {
-// 			error(0, fmt.Sprintf("Could not turn %s into integer", num))
-// 		}
-// 		return num
-// 	}
-// 	if token.ttype == STRING {
-// 		return token.lexeme
-// 	}
-// 	return nil
-// }
